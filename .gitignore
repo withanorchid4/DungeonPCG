@@ -1,0 +1,4 @@
+# 忽略特定大文件
+MyDemo/Assets/Art/Model/Ch23_nonPBR.fbx
+MyDemo/Assets/BackRoomLikr/BackroomsLikeAsset/BlendFile/BackRoomsLike_Preview_001.zip
+MyDemo/Assets/BackRoomLikr/BackroomsLikeAsset/BlendFile/Props_only.zip

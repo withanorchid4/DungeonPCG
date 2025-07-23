@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 53fd10919b474ffeb5a307a534625907, type: 3}
+  m_Name: AlongWallPrefab
+  m_EditorClassIdentifier: 
+  prefabInfos:
+  - prefab: {fileID: 1698851678553308067, guid: b28e3eb000bbb004ba17741b1735c388,
+      type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 2}
+    type: 3
+  - prefab: {fileID: 1138768631705431315, guid: 21fbbee1a37cdc24883ddaa00df70064,
+      type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 2}
+    type: 3
+  - prefab: {fileID: 7529293396164430938, guid: bd223a76a5e3cbb4eafff08d42f709fa,
+      type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 2}
+    type: 3
+  - prefab: {fileID: 611621802024007210, guid: 48ad8bc225c392a4d9ca4d03334e4694, type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 2}
+    type: 3
+  - prefab: {fileID: 2481878693739601928, guid: e657db95d54c80f4c9af1043d23c1d7c,
+      type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 2}
+    type: 3
