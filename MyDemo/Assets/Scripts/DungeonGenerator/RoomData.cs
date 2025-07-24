@@ -1199,7 +1199,7 @@ public class DungeonMap
 
     public void InstantiatePlayer()
     {
-        string playerPrefabPath = "Assets/Configs/Player/Player.prefab";
+        string playerPrefabPath = "Assets/Configs/Player/PlayerWithLight.prefab";
         #if UNITY_EDITOR
         var playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(playerPrefabPath);
         #else
