@@ -1,13 +1,27 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+
+using UnityEngine;
+using UnityEngine.Rendering;
 
 public class DungeonManager : MonoBehaviour
 {
     private DungeonMap dungeonMap;
 
-    void Start()
+    void Awake() //之前是Start
     {
+        // GraphicsSettings.useScriptableRenderPipelineBatching = false;
         dungeonMap = new DungeonMap();
         dungeonMap.Init(10, 12, 4, 8, false);
+
+        var instancer = FindObjectOfType<BookShelfInstancer>();
+        if (instancer != null)
+        {
+            instancer.instanceDict = new Dictionary<(Mesh, Material), List<Matrix4x4>>();
+        }
+        else
+        {
+            Debug.LogError("BookShelfInstancer not exists");
+        }
         
         var visualizer = FindObjectOfType<DungeonVisualizer>();
         if (visualizer == null)

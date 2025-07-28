@@ -21,10 +21,13 @@ public class DoorControl : MonoBehaviour
 
     public bool playerInRange;
 
+    public bool hasEnoughKey;
+
     public void OnValidate()
     {
         //Debug.Log("Door Enable!!");
         var smallDoor = FindSmallDoorInChildren(transform.gameObject);
+        hasEnoughKey = false;
         if (smallDoor == null)
         {
             Debug.LogError("出错，在这个门节点下没有smalldoor:" + transform.name);
@@ -72,10 +75,14 @@ public class DoorControl : MonoBehaviour
         {
             if (transform.gameObject.name.Contains("Exit"))
             {
-                if(!isOpen)
+                if(!isOpen && hasEnoughKey)
                 {
                     Open();
                     isOpen = true;
+                }
+                else if (!hasEnoughKey)
+                {
+                    Debug.Log("你没有足够的钥匙！");
                 }
             }
             else

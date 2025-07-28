@@ -10,8 +10,13 @@ public class DoorTrigger : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            Debug.Log("Enter!");
+            //Debug.Log("Enter!");
             doorControl.playerInRange = true;
+            var collector = other.gameObject.GetComponent<Collector>();
+            if (collector.CanExit())
+            {
+                doorControl.hasEnoughKey = true;
+            }
         }
     }
 
@@ -19,7 +24,7 @@ public class DoorTrigger : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            Debug.Log("Exit!");
+            //Debug.Log("Exit!");
             doorControl.playerInRange = false;
         }
     }

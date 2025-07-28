@@ -5,13 +5,31 @@ using UnityEditor;
 
 public class ObjectPlacementSystem
 {
+    public static int maxKeyCount = 3;
 #if UNITY_EDITOR
     private static PrefabResource prefabResource = AssetDatabase.LoadAssetAtPath<PrefabResource>("Assets/Configs/PrefabBind.asset");
     private static PrefabResource alongWallResource = AssetDatabase.LoadAssetAtPath<PrefabResource>("Assets/Configs/DecorPrefabs/AlongWallPrefabs/AlongWallPrefab.asset");
 #else
     private static prefabResource = Resources.Load<PrefabResource>("Assets/ArtForSecondScene/ZNS3D/Prefabs/phone.prefab");
 #endif
-    public static void PlaceObject(Vector3 position, string objName)
+
+    private static BookShelfInstancer bookShelfInstancer = UnityEngine.Object.FindObjectOfType<BookShelfInstancer>();
+    
+    private static GameObject instanceProxy = GameObject.Find("InstanceProxy") ?? new GameObject("InstanceProxy");
+
+    private static GameObject doorProxy = GameObject.Find("DoorProxy") ?? new GameObject("DoorProxy");
+
+
+    private static void InstantiateAndRegisterInstance(RoomData roomData, string name, GameObject prefab, Vector3 position, Quaternion rotation, Vector3 scale)
+    {
+        GameObject go = Object.Instantiate(prefab, position, rotation);
+        go.transform.SetParent(instanceProxy.transform);
+        go.name = name;
+        roomData.roomObjects.Add(go);
+        bookShelfInstancer.DisableAllMeshRenderer(go);
+        bookShelfInstancer.RegisterInstance(prefab, position, rotation, scale);
+    }
+    public static void PlaceObject(RoomData roomData, Vector3 position, string objName)
     {
         if (prefabResource == null)
         {
@@ -23,8 +41,12 @@ public class ObjectPlacementSystem
             if (prefabResource.prefabInfos[i].prefab.name.Contains(objName))
             {
                 var prefab = prefabResource.prefabInfos[i].prefab;
-                GameObject go = Object.Instantiate(prefab, position, quaternion.identity);
-                go.name = objName;
+                // GameObject go = Object.Instantiate(prefab, position, quaternion.identity);
+                // go.name = objName;
+                // roomData.roomObjects.Add(go);
+                // bookShelfInstancer.DisableAllMeshRenderer(go);
+                // bookShelfInstancer.RegisterInstance(prefab, position, quaternion.identity, Vector3.one);
+                InstantiateAndRegisterInstance(roomData, objName, prefab, position, Quaternion.identity, Vector3.one);
             }
         }
     }
@@ -45,15 +67,16 @@ public class ObjectPlacementSystem
                 var prefabInfo = prefabResource.prefabInfos[i];
 
                 float angle = data.GetRotationAngle();
-                if (grid == null)
-                {
-                    GameObject tempGo = Object.Instantiate(prefabInfo.prefab, new Vector3(x, 0, y), Quaternion.Euler(0, angle, 0));
-                    tempGo.name = "Temp" + doorType + data.doorID;
-                    //tempGo.AddComponent<DoorControl>();
-                    return;
-                }
+                // if (grid == null)
+                // {
+                //     GameObject tempGo = Object.Instantiate(prefabInfo.prefab, new Vector3(x, 0, y), Quaternion.Euler(0, angle, 0));
+                //     tempGo.name = "Temp" + doorType + data.doorID;
+                //     //tempGo.AddComponent<DoorControl>();
+                //     return;
+                // }
                 
                 GameObject go = Object.Instantiate(prefabInfo.prefab, new Vector3(x, 0, y), Quaternion.Euler(0, angle, 0));
+                go.transform.SetParent(doorProxy.transform);
                 go.name = doorType + data.doorID;
                 if (data.isExit)
                 {
@@ -64,42 +87,8 @@ public class ObjectPlacementSystem
         }
         //Debug.Log("Door founded ? " + found);
     }
-    public static void PlaceTreasureBox(float x, float y, CellInfo[,] greaterGrid = null)
-    {
-        if (prefabResource == null)
-        {
-            Debug.LogError("Error: 找不到prefabBind资产");
-        }
 
-        for (uint i = 0; i < prefabResource.prefabInfos.Length; i++)
-        {
-            if (prefabResource.prefabInfos[i].prefab.name.Contains("TreasureBox"))
-            {
-                var prefabInfo = prefabResource.prefabInfos[i];
-                
-                //For Debug，在示意图中实例化，直接在目标位置生成，放缩和地牢中不一样
-                if (greaterGrid == null)
-                {
-                    GameObject tempGo = Object.Instantiate(prefabInfo.prefab, new Vector3(x, 0, y), Quaternion.identity);
-                    tempGo.name = "TempTreasureBox";
-                    return;
-                }
-                //Debug end
-                
-                if (!CouldPlacedHere(x, y, prefabInfo, greaterGrid))
-                {
-                    return;
-                }
-
-                GameObject go = Object.Instantiate(prefabInfo.prefab, new Vector3(x, 0, y), Quaternion.identity);
-                go.name = "TreasureBox";
-
-            }
-        }
-        
-    }
-
-    public static void PlaceCenterAreaObject(float centerX, float centerY, string objName, CellInfo[,] greaterGrid = null)
+    public static void PlaceCenterAreaObject(RoomData roomData, float centerX, float centerY, string objName, CellInfo[,] greaterGrid = null)
     {
         if (prefabResource == null)
         {
@@ -117,12 +106,12 @@ public class ObjectPlacementSystem
                 var baseX = centerX - prefabInfo.size.x / 2;
                 var baseY = centerY - prefabInfo.size.z / 2;
                 //For Debug，在示意图中实例化，直接在目标位置生成，放缩和地牢中不一样
-                if (greaterGrid == null)
-                {
-                    GameObject tempGo = Object.Instantiate(prefabInfo.prefab, new Vector3(baseX, 0.02f, baseY), Quaternion.identity);
-                    tempGo.name = "Temp" + prefabInfo.prefab.name;
-                    continue;
-                }
+                // if (greaterGrid == null)
+                // {
+                //     GameObject tempGo = Object.Instantiate(prefabInfo.prefab, new Vector3(baseX, 0.02f, baseY), Quaternion.identity);
+                //     tempGo.name = "Temp" + prefabInfo.prefab.name;
+                //     continue;
+                // }
                 //Debug end
                 
                 if (!CouldPlacedHere(baseX, baseY, prefabInfo, greaterGrid))
@@ -130,8 +119,10 @@ public class ObjectPlacementSystem
                     return;
                 }
 
-                GameObject go = Object.Instantiate(prefabInfo.prefab, new Vector3(baseX, 0.02f, baseY), Quaternion.identity);
-                //go.name += centerX;
+                // GameObject go = Object.Instantiate(prefabInfo.prefab, new Vector3(baseX, 0.02f, baseY), Quaternion.identity);
+                // //go.name += centerX;
+                // roomData.roomObjects.Add(go);
+                InstantiateAndRegisterInstance(roomData, prefabInfo.prefab.name, prefabInfo.prefab, new Vector3(baseX, 0.02f, baseY), Quaternion.identity, Vector3.one);
             }
         }
         
@@ -182,7 +173,7 @@ public class ObjectPlacementSystem
         }
     }
 
-    public static bool CouldWallObjectPlacedHere(float x, float y, int wallType, string objName, CellInfo[,] greaterGrid)  //沿墙物体都是有方向性的，不能走上面的函数逻辑
+    public static bool CouldWallObjectPlacedHere(RoomData roomData, float x, float y, int wallType, string objName, CellInfo[,] greaterGrid)  //沿墙物体都是有方向性的，不能走上面的函数逻辑
     {
         if (alongWallResource == null)
         {
@@ -226,9 +217,11 @@ public class ObjectPlacementSystem
                     }
 
                     //在此处实例化
-                    GameObject leftAlongWallObj = Object.Instantiate(prefabInfo.prefab,
-                        new Vector3(x + prefabInfo.size.x / 2, 0, y + prefabInfo.size.z / 2 - 1), Quaternion.identity);
-                    leftAlongWallObj.name = "LeftBookShelf";
+                    // GameObject leftAlongWallObj = Object.Instantiate(prefabInfo.prefab,
+                    //     new Vector3(x + prefabInfo.size.x / 2, 0, y + prefabInfo.size.z / 2 - 1), Quaternion.identity);
+                    // leftAlongWallObj.name = "LeftBookShelf";
+                    // roomData.roomObjects.Add(leftAlongWallObj);
+                    InstantiateAndRegisterInstance(roomData, "LeftBookShelf", prefabInfo.prefab,  new Vector3(x + prefabInfo.size.x / 2, 0, y + prefabInfo.size.z / 2 - 1), Quaternion.identity, Vector3.one);
                 }
                 else if (wallType == 1)
                 {
@@ -260,9 +253,11 @@ public class ObjectPlacementSystem
                             greaterGrid[m, n].cellType = GridCellType.Occupied;
                         }
                     }
-                    GameObject buttomAlongWallObj = Object.Instantiate(prefabInfo.prefab,
-                        new Vector3(x + prefabInfo.size.z / 2, 0, y + prefabInfo.size.x / 2 - 1), Quaternion.Euler(0,270,0));
-                    buttomAlongWallObj.name = "ButtomBookShelf";
+                    // GameObject buttomAlongWallObj = Object.Instantiate(prefabInfo.prefab,
+                    //     new Vector3(x + prefabInfo.size.z / 2, 0, y + prefabInfo.size.x / 2 - 1), Quaternion.Euler(0,270,0));
+                    // buttomAlongWallObj.name = "ButtomBookShelf";
+                    // roomData.roomObjects.Add(buttomAlongWallObj);
+                    InstantiateAndRegisterInstance(roomData, "ButtomBookShelf", prefabInfo.prefab,  new Vector3(x + prefabInfo.size.z / 2, 0, y + prefabInfo.size.x / 2 - 1), Quaternion.Euler(0,270,0), Vector3.one);
                 }
                 else if (wallType == 2)
                 {
@@ -296,9 +291,11 @@ public class ObjectPlacementSystem
                             greaterGrid[m, n].cellType = GridCellType.Occupied;
                         }
                     }
-                    GameObject rightAlongWallObj = Object.Instantiate(prefabInfo.prefab,
-                        new Vector3(x - prefabInfo.size.x / 2 + 1, 0, y + prefabInfo.size.z / 2 - 1), Quaternion.Euler(0,180,0));
-                    rightAlongWallObj.name = "RightBookShelf";
+                    // GameObject rightAlongWallObj = Object.Instantiate(prefabInfo.prefab,
+                    //     new Vector3(x - prefabInfo.size.x / 2 + 1, 0, y + prefabInfo.size.z / 2 - 1), Quaternion.Euler(0,180,0));
+                    // rightAlongWallObj.name = "RightBookShelf";
+                    // roomData.roomObjects.Add(rightAlongWallObj);
+                    InstantiateAndRegisterInstance(roomData, "RightBookShelf", prefabInfo.prefab,  new Vector3(x - prefabInfo.size.x / 2 + 1, 0, y + prefabInfo.size.z / 2 - 1), Quaternion.Euler(0,180,0), Vector3.one);
                 }
                 else
                 {
@@ -333,12 +330,25 @@ public class ObjectPlacementSystem
                             Debug.Log("在(" + m + ", " + n + ")处放置" + prefabInfo.prefab.name);
                         }
                     }
-                    GameObject topAlongWallObj = Object.Instantiate(prefabInfo.prefab,
-                        new Vector3(x + prefabInfo.size.z / 2, 0, y - prefabInfo.size.x / 2), Quaternion.Euler(0,90,0));
-                    topAlongWallObj.name = "TopBookShelf";
+                    // GameObject topAlongWallObj = Object.Instantiate(prefabInfo.prefab,
+                    //     new Vector3(x + prefabInfo.size.z / 2, 0, y - prefabInfo.size.x / 2), Quaternion.Euler(0,90,0));
+                    // topAlongWallObj.name = "TopBookShelf";
+                    // roomData.roomObjects.Add(topAlongWallObj);
+                    InstantiateAndRegisterInstance(roomData, "TopBookShelf", prefabInfo.prefab,  new Vector3(x + prefabInfo.size.z / 2, 0, y - prefabInfo.size.x / 2), Quaternion.Euler(0,90,0), Vector3.one);
                 }
             }
         }
         return true;
+    }
+
+    private static void RemovePartialKeyOnObject() //对于哪些房间里的key被激活，应该有房间判断逻辑，再好好想想
+    {
+        //获取场景中所有名字为Key的gameObject
+        var keyObjects = GameObject.FindGameObjectsWithTag("Key");
+        foreach (var obj in keyObjects)
+        {
+            //获取顶层gameobject
+            var topObject = obj.transform.parent.gameObject;
+        }
     }
 }

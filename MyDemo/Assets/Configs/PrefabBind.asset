@@ -23,7 +23,7 @@ MonoBehaviour:
     basePosition: {x: 0, y: 0, z: 0}
     size: {x: 2, y: 0, z: 1}
     type: 3
-  - prefab: {fileID: 6212024783788401340, guid: 5f6c397e05fd36947bfbbbb84d068deb,
+  - prefab: {fileID: 5324134120256731818, guid: 7e063e5b9bb853746a3d3fc2975be042,
       type: 3}
     basePosition: {x: 0, y: 0, z: 0}
     size: {x: 1, y: 0, z: 1}
@@ -56,13 +56,16 @@ MonoBehaviour:
     basePosition: {x: 0, y: 0, z: 0}
     size: {x: 1, y: 0, z: 1}
     type: 3
-  - prefab: {fileID: 1971479611535668158, guid: 52ced98d357f3724c8b924244f9d6eb8,
-      type: 3}
+  - prefab: {fileID: 878330118873433403, guid: 4a2261bf875eb6542bedf224816f7019, type: 3}
     basePosition: {x: 0, y: 0, z: 0}
     size: {x: 1, y: 0, z: 1}
     type: 3
   - prefab: {fileID: 7748691546824286093, guid: 7afef0b8d35000e4996b6b1d2ce781f7,
       type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 1}
+    type: 3
+  - prefab: {fileID: 229143707719814926, guid: 4a8c30e0dcb5e3b4f9020dc15c450b47, type: 3}
     basePosition: {x: 0, y: 0, z: 0}
     size: {x: 1, y: 0, z: 1}
     type: 3

@@ -1,10 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Generic;
+using System.Linq;
+using DelaunatorSharp;
 
 using UnityEngine;
 
 using UnityEditor;
 using Object = System.Object;
+using Random = UnityEngine.Random;
 
 public class DungeonVisualizerWindow : EditorWindow
 {
@@ -18,6 +22,11 @@ public class DungeonVisualizerWindow : EditorWindow
     private int maxsize;
 
     private bool randomRoom;
+
+    private int seed;
+    private bool useOrShowSeed;
+    
+    private GameObject prefabToPlace;
     public void OnGUI()
     {
         GUILayout.Label("地牢可视化窗口");
@@ -26,10 +35,31 @@ public class DungeonVisualizerWindow : EditorWindow
         minsize = EditorGUILayout.IntField("最小尺寸", minsize);
         maxsize = EditorGUILayout.IntField("最大尺寸", maxsize);
         randomRoom = EditorGUILayout.Toggle("是否生成指定房间", randomRoom);
+
+        GUILayout.BeginHorizontal();
+        seed = EditorGUILayout.IntField("随机种子", seed);
+        useOrShowSeed = EditorGUILayout.Toggle("使用随机种子", useOrShowSeed);
+        GUILayout.EndHorizontal();
+        
+        // 添加Prefab拖拽字段
+        prefabToPlace = (GameObject)EditorGUILayout.ObjectField(
+            "要放置的Prefab", 
+            prefabToPlace, 
+            typeof(GameObject), 
+            false); // false表示不允许场景对象，只允许Prefab
+        
         
         if (GUILayout.Button("新建一个地牢并可视化"))
         {
+            var rng = new System.Random();
+            if(!useOrShowSeed)
+            {
+                seed = rng.Next(0, int.MaxValue);
+            }
+            UnityEngine.Random.InitState((int)seed);
+            Debug.Log("随机种子：" + seed);
             GenerateAndVisualizeDungeon(randomRoom);
+            Repaint();
         }
 
         if (GUILayout.Button("导出地图为一张纹理图"))
@@ -83,6 +113,34 @@ public class DungeonVisualizerWindow : EditorWindow
             generatedMap.InstantiatePlayer();
         }
         
+        //开启新的UI区域
+        GUILayout.Space(10);
+        if (GUILayout.Button("测试三角剖分"))
+        {
+            generatedMap.ConstructGrapgWithRing();
+        }
+
+        if (GUILayout.Button("测试解析gameobject"))
+        {
+            var go = BookShelfInstancer.GetAllGameObjectsInPrefab(prefabToPlace);
+            Debug.Log(go.Count);
+            foreach (var g in go)
+            {
+                Debug.Log(g.name);
+            }
+        }
+        
+    }
+    
+    void AddRandomPoints(int count, float range, List<Vector2> points)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            points.Add(new Vector2(
+                (int)Random.Range(-range, range),
+                (int)Random.Range(-range, range)
+            ));
+        }
     }
     
     void GenerateAndVisualizeDungeon(bool random)

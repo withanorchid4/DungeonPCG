@@ -37,3 +37,18 @@ MonoBehaviour:
     basePosition: {x: 0, y: 0, z: 0}
     size: {x: 1, y: 0, z: 2}
     type: 3
+  - prefab: {fileID: 6684004808150194868, guid: 758e49b6522d15e4a9de7668c997c594,
+      type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 2}
+    type: 3
+  - prefab: {fileID: 2923041867868421437, guid: 794a8ee99058cbd4e80aa73b7998e3c5,
+      type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 2}
+    type: 3
+  - prefab: {fileID: 5581144341607424607, guid: d29fd62ba1f1a0c4f9615d4253c984ea,
+      type: 3}
+    basePosition: {x: 0, y: 0, z: 0}
+    size: {x: 1, y: 0, z: 2}
+    type: 3

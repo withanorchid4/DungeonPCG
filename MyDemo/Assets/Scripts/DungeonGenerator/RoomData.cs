@@ -1,12 +1,17 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Unity.VisualScripting;
 // using System.Numerics;
 using UnityEngine;
 using Unity.AI.Navigation;
 
+using DelaunatorSharp;
+
 using UnityEditor;
+using Random = UnityEngine.Random;
 
 public enum RoomType {Entry, Blank, Key, Puzzle, Monster, Exit}
 public enum DoorType {None, Exit, Locked}
@@ -27,6 +32,8 @@ public class RoomData
     public List<AreaTypeProxy> areas;
 
     public List<DecoratorData> decors;
+
+    public List<GameObject> roomObjects;
     
     public uint roomID;
     
@@ -186,11 +193,19 @@ public class DungeonMap
     public List<DoorData> potentialDoors;
 
     MatrixGraph graph;
+
+    private int startMSTPoint;
+
+    private List<List<int>> delaunatorRes;
     //configs
     private RoomConfig blankRoonConfig;
     private RoomConfig keyRoomConfig;
     
     //玩家出生，出口，怪物生成信息
+    private int birthRoomsID;
+    private int exitRoomsID;
+    private int monsterRoomsID;
+    
     public Vector2Int playerBirthPos;
     public Vector2Int exitPos;
     public Vector2Int monsterBirthPos;
@@ -220,8 +235,36 @@ public class DungeonMap
             }
         }
         
-        GenerateRooms(randomRoom);
-        GenerateCorridors();
+        // GenerateRooms(randomRoom);
+        // GenerateCorridorsV2();
+        int maxRetry = 3;
+        int currentRetry = 0;
+        bool success = false;
+        var rng = new System.Random();
+
+        while (!success && currentRetry < maxRetry)
+        {
+            if (currentRetry != 0)
+            {
+                int newSeed = rng.Next(0, int.MaxValue);
+                Debug.Log("重试生成房间信息，种子：" + newSeed + "  重试次数：" + currentRetry + "/3");
+                UnityEngine.Random.InitState(newSeed);
+            }
+            
+            rooms.Clear();
+            corridors.Clear();
+            potentialDoors.Clear();
+            
+            GenerateRooms(randomRoom);
+            success = GenerateCorridorsV2();
+            
+            currentRetry++;
+        }
+
+        if (!success)
+        {
+            Debug.LogError("发生无法解决的错误：生成房间信息失败，走廊不连通");
+        }
     }
 
     #region 生成房间和走廊
@@ -275,16 +318,18 @@ public class DungeonMap
             if (IsNewRoomValid(room))
             {
                 // room.roomType= roomIndex % 2 == 0 ? RoomType.Key : RoomType.Blank;
-                room.roomType = RandomProcess.GetRandomRoomType();
+                //room.roomType = RandomProcess.GetRandomRoomType();
+                room.roomType = RoomType.Key;
                 room.roomID = roomIndex++;
                 room.decors = new List<DecoratorData>();
+                room.roomObjects = new List<GameObject>();
                 rooms.Add(room);
                 retryCount = 0;
             }
             retryCount ++;
         }
         
-        graph = new MatrixGraph(roomCount);
+        graph = new MatrixGraph(rooms.Count);
     }
 
     private void GenerateCorridors()
@@ -295,6 +340,7 @@ public class DungeonMap
 
         for (int i = 0; i < rooms.Count; i++)
         {
+            Debug.Log("房间 " + i + ": " + rooms[i].basePosition);
             for (int j = i + 1; j < rooms.Count; j++)
             {
                 // if (i + 1 != j && rng.Next(0, 4) == 0)
@@ -305,53 +351,349 @@ public class DungeonMap
                 var curRoomCenter = rooms[j].center;
                 bool horizontalFirst = rng.Next(0, 2) == 0;
 
-                Vector2 corner;
+                // Vector2 corner;
+                List<Vector2> corners = new List<Vector2>();
                 if (horizontalFirst)
                 {
-                    corner = new Vector2(preRoomCenter.x, curRoomCenter.y);
+                    corners.Add(new Vector2(preRoomCenter.x, curRoomCenter.y));
+                    corners.Add(new Vector2(curRoomCenter.x, preRoomCenter.y));
                 }
                 else
                 {
-                    corner = new Vector2(curRoomCenter.x, preRoomCenter.y);
+                    corners.Add(new Vector2(curRoomCenter.x, preRoomCenter.y));
+                    corners.Add(new Vector2(preRoomCenter.x, curRoomCenter.y));
                 }
 
-                List<CorridorData> tempCorridors = new List<CorridorData>();
-
-                //判断是否只需要一条走廊就可以连接两个房间
-                if (!rooms[i].IsPointInside(corner) || true)  //把房间里的走廊作为过道标注出来
+                bool hasGenCorridor = false;
+                for(int k = 0; k < corners.Count; k++)
                 {
-                    //Debug.Log("需要两条走廊才能连接两个房间1");
-                    tempCorridors.Add(new CorridorData { start = preRoomCenter, end = corner });
-                }
+                    var corner = corners[k];
+                    List<CorridorData> tempCorridors = new List<CorridorData>();
 
-                if (!rooms[j].IsPointInside(corner) || true) //把房间里的走廊作为过道标注出来
-                {
-                    //Debug.Log("需要两条走廊才能连接两个房间2");
-                    tempCorridors.Add(new CorridorData { start = corner, end = curRoomCenter });
-                }
-
-                bool isThisCorridorValid = true;
-                foreach (var corridor in tempCorridors)
-                {
-                    if (!IsnewCorridorValid(corridor, i, j))
+                    //判断是否只需要一条走廊就可以连接两个房间
+                    if (!rooms[i].IsPointInside(corner) || true) //把房间里的走廊作为过道标注出来
                     {
-                        isThisCorridorValid = false;
+                        //Debug.Log("需要两条走廊才能连接两个房间1");
+                        tempCorridors.Add(new CorridorData { start = preRoomCenter, end = corner });
+                    }
+
+                    if (!rooms[j].IsPointInside(corner) || true) //把房间里的走廊作为过道标注出来
+                    {
+                        //Debug.Log("需要两条走廊才能连接两个房间2");
+                        tempCorridors.Add(new CorridorData { start = corner, end = curRoomCenter });
+                    }
+
+                    bool isThisCorridorValid = true;
+                    foreach (var corridor in tempCorridors)
+                    {
+                        if (!IsnewCorridorValid(corridor, i, j))
+                        {
+                            isThisCorridorValid = false;
+                            break;
+                        }
+                    }
+
+                    //Debug.Log("当前走廊有效：" + isThisCorridorValid);
+                    if (isThisCorridorValid)
+                    {
+                        corridors.AddRange(tempCorridors);
+                        //构建图中的边
+                        int pathLength = (int)(Mathf.Abs(preRoomCenter.x - curRoomCenter.x) +
+                                               Mathf.Abs(preRoomCenter.y - curRoomCenter.y));
+                        graph.AddEdge(i, j, pathLength);
+                        hasGenCorridor = true;
                         break;
                     }
                 }
 
-                //Debug.Log("当前走廊有效：" + isThisCorridorValid);
-                if (isThisCorridorValid)
+                if (!hasGenCorridor)
                 {
-                    corridors.AddRange(tempCorridors);
-                    //构建图中的边
-                    float pathLength = Mathf.Abs(preRoomCenter.x - curRoomCenter.x) + Mathf.Abs(preRoomCenter.y - curRoomCenter.y);
-                    graph.AddEdge(i, j, 1);
+                    Debug.LogWarning("无法连接两个房间 " + i + "  " + j);
+                }
+                
+            }
+            
+        }
+        graph.BuildDistances();
+
+        var components = graph.GetConnectedComponents();
+        if (components.Count > 1)
+        {
+            Debug.LogError("存在多个连通分量");
+            //尝试连通这些连通分量
+            
+        }
+        //Debug.Log("Count Corridot" + corridors.Count);
+    }
+
+    private bool GenerateCorridorsV2()
+    {
+        Debug.Log("开始生成走廊信息");
+        List<Vector2> points = new List<Vector2>();//每个房间的center
+        
+        startMSTPoint = -1;
+        int minBasePositionY = Int32.MaxValue;
+        
+        for (int i = 0; i < rooms.Count; i++)
+        {
+            Debug.Log("房间 " + i + ": " + rooms[i].basePosition);
+            if (rooms[i].basePosition.y < minBasePositionY)
+            {
+                minBasePositionY = rooms[i].basePosition.y;
+                startMSTPoint = i;
+            }
+            points.Add(rooms[i].center);
+            
+        }
+
+        for (int i = 0; i < points.Count; i++)
+        {
+            Debug.Log($"点 {i}: ({points[i].x}, {points[i].y})");
+        }
+        
+        // 2. 转换为IPoint数组（修复后的版本）
+        IPoint[] iPoints = points.Select(p => (IPoint)new Point(p.x, p.y)).ToArray();
+        
+        // 3. 创建Delaunator实例进行三角剖分
+        Delaunator delaunator = new Delaunator(iPoints);
+        
+        // 4. 获取三角形索引
+        int[] triangles = delaunator.Triangles;
+        
+        // 5. 使用三角形数据
+        Debug.Log($"生成三角形数量: {triangles.Length / 3}");
+
+        // 6. 输出三角形数据
+        //保存三角剖分结果集，用于补全连通图
+        delaunatorRes = new List<List<int>>();
+        for (int i = 0; i < triangles.Length; i += 3)
+        {
+            Debug.Log($"三角形 {i / 3}: " + triangles[i] + ", " + triangles[i + 1] + ", " + triangles[i + 2]);
+            //corridors.Add(new CorridorData { start = points[triangles[i]], end = points[triangles[i + 1]] });
+            graph.AddEdge(triangles[i], triangles[i + 1], (int)DisFromRooms(triangles[i], triangles[i + 1]));
+            //corridors.Add(new CorridorData { start = points[triangles[i + 1]], end = points[triangles[i + 2]] });
+            graph.AddEdge(triangles[i + 1], triangles[i + 2], (int)DisFromRooms(triangles[i + 1], triangles[i + 2]));
+            //corridors.Add(new CorridorData { start = points[triangles[i + 2]], end = points[triangles[i]] });
+            graph.AddEdge(triangles[i + 2], triangles[i], (int)DisFromRooms(triangles[i + 2], triangles[i]));
+            
+            delaunatorRes.Add(new List<int> { triangles[i], triangles[i + 1], triangles[i + 2] });
+            delaunatorRes.Add(new List<int> { triangles[i + 1], triangles[i + 2], triangles[i] });
+            delaunatorRes.Add(new List<int> { triangles[i + 2], triangles[i], triangles[i + 1] });
+        }
+
+        var edges = graph.BuildMST(startMSTPoint);
+        
+        graph = new MatrixGraph(rooms.Count);
+        
+        foreach (var edge in edges)
+        {
+            var startIdx = edge.from;
+            var endIdx = edge.to;
+            //corridors.Add(new CorridorData { start = points[startIdx], end = points[endIdx] });
+            TryConnectToRooms(startIdx, endIdx);
+        }
+        
+        graph.BuildDistances();
+        
+        UseDelaunatorResFixGraph();
+        
+        //启用究极方案，对于不同连通分量，两两连接直到连通
+        var components = graph.GetConnectedComponents();
+        int retryCnt = 0;
+        while (components.Count > 1 && retryCnt < 300)
+        {
+            Debug.LogError("尝试暴力填充多个连通分量" + components.Count);
+
+            var component1 = components[0];
+            var component2 = components[1];
+
+            bool addedOnThisWhile = false;
+
+            for (int i = 0; i < component1.Count; i++)
+            {
+                if (addedOnThisWhile)
+                    break;
+                for (int j = 0; j < component2.Count; j++)
+                {
+                    addedOnThisWhile = TryConnectToRooms(component1[i], component2[j]);
+                    retryCnt++;
+                    if(addedOnThisWhile)
+                    {
+                        graph.BuildDistances();
+                        components = graph.GetConnectedComponents();
+                        break;
+                    }
                 }
             }
         }
-        graph.BuildDistances();
-        //Debug.Log("Count Corridot" + corridors.Count);
+
+        if (components.Count > 1)
+        {
+            Debug.LogError("无计可施");
+            return false;
+        }
+        
+        
+        //尝试从无环图构造环，使用delaunator结果集
+        ConstructGrapgWithRing();
+
+        return true;
+    }
+
+    public void ConstructGrapgWithRing()
+    {
+        //此处的逻辑是什么呢？
+        //第一个节点绝对不要成环，不然直接从起点到终点了，终点也不要成环，我希望不要有在终点附近不要迷路，加上环之后要统计从起点到终点所需要的时间
+        //根据最小生成树找到一条直达路径，不在这条路径上的节点是主干路径，到其他节点为岔路，岔路成环避免走入死路
+        
+        //把最远节点设置为出口，连接入口找到主干路径
+        var farestNode = graph.GetFarestNode(startMSTPoint, out var farestDist);
+        birthRoomsID = startMSTPoint;
+        exitRoomsID = farestNode;
+        if (farestNode != -1)
+        {
+            //找一条从startMSTPoint到farestNode的路径
+            var path = graph.FindWayFromStartToEnd(startMSTPoint, farestNode); //BFS
+            if (path != null)
+            {
+                //用于debug生成的主干路线
+                // foreach (var node in path)
+                // {
+                //     Debug.Log("节点 " + rooms[node].basePosition);
+                // }
+                
+                //希望最多只加两条边进去，避免环太多
+                int cnt = 0;
+                foreach (var res in delaunatorRes)
+                {
+                    if(cnt >= 2)
+                        break;
+                    //想要从res中添加的两个节点不能都是path中的节点
+                    int idx1 = res[0];
+                    int idx2 = res[1];
+                    if (path.Contains(idx1) && path.Contains(idx2))
+                    {
+                        continue;
+                    }
+                    //不想把 在起点和终点上 加环
+                    if (idx1 == startMSTPoint || idx2 == startMSTPoint || idx1 == farestNode || idx2 == farestNode || graph.matrix[idx1, idx2] != int.MaxValue)
+                    {
+                        continue;
+                    }
+                    //尝试连接
+                    bool addRes = TryConnectToRooms(idx1, idx2);
+                    if (addRes)
+                    {
+                        cnt++;
+                    }
+                }
+                graph.BuildDistances();
+            }
+            else
+            {
+                Debug.LogError("没有找到从startMSTPoint到farestNode的路径");
+            }
+        }
+        else
+        {
+            Debug.LogError("没有找到最远节点");
+        }
+    }
+    public void UseDelaunatorResFixGraph()
+    {
+        var components = graph.GetConnectedComponents();
+        if (components.Count > 1)
+        {
+            Debug.LogError("尝试使用三角剖分结果集填充多个连通分量" + components.Count);
+            //尝试连通这些连通分量————用三角剖分结果集
+            foreach (var res in delaunatorRes)
+            {
+                int startIdx = res[0];
+                int endIdx = res[1];
+                if (graph.distanceMatrix[startIdx, endIdx] == int.MaxValue) //说明为未连接
+                {
+                    //尝试连接
+                    TryConnectToRooms(startIdx, endIdx);
+                    graph.BuildDistances();
+                    components = graph.GetConnectedComponents();
+                    if (components.Count == 1)
+                    {
+                        break;
+                    }
+                }
+            }
+            
+        }
+    }
+
+    private bool TryConnectToRooms(int startIdx, int endIdx)
+    {
+        var preRoomCenter = rooms[startIdx].center;
+        var curRoomCenter = rooms[endIdx].center;
+        bool horizontalFirst = UnityEngine.Random.Range(0, 2) == 0;
+
+        // Vector2 corner;
+        List<Vector2> corners = new List<Vector2>();
+        if (horizontalFirst)
+        {
+            corners.Add(new Vector2(preRoomCenter.x, curRoomCenter.y));
+            corners.Add(new Vector2(curRoomCenter.x, preRoomCenter.y));
+        }
+        else
+        {
+            corners.Add(new Vector2(curRoomCenter.x, preRoomCenter.y));
+            corners.Add(new Vector2(preRoomCenter.x, curRoomCenter.y));
+        }
+
+        bool hasGenCorridor = false;
+        for(int k = 0; k < corners.Count; k++)
+        {
+            var corner = corners[k];
+            List<CorridorData> tempCorridors = new List<CorridorData>();
+
+
+            //Debug.Log("需要两条走廊才能连接两个房间1");
+            tempCorridors.Add(new CorridorData { start = preRoomCenter, end = corner });
+
+            //Debug.Log("需要两条走廊才能连接两个房间2");
+            tempCorridors.Add(new CorridorData { start = corner, end = curRoomCenter });
+
+            bool isThisCorridorValid = true;
+            foreach (var corridor in tempCorridors)
+            {
+                if (!IsnewCorridorValid(corridor, startIdx, endIdx))
+                {
+                    isThisCorridorValid = false;
+                    break;
+                }
+            }
+
+            //Debug.Log("当前走廊有效：" + isThisCorridorValid);
+            if (isThisCorridorValid)
+            {
+                corridors.AddRange(tempCorridors);
+                //构建图中的边
+                int pathLength = (int)(Mathf.Abs(preRoomCenter.x - curRoomCenter.x) +
+                                       Mathf.Abs(preRoomCenter.y - curRoomCenter.y));
+                graph.AddEdge(startIdx, endIdx, pathLength);
+                hasGenCorridor = true;
+                break;
+            }
+        }
+
+        if (!hasGenCorridor)
+        {
+            Debug.LogWarning("无法连接两个房间 " + startIdx + "  " + endIdx);
+            return false;
+        }
+
+        return true;
+    }
+
+    private float DisFromRooms(int preIndex, int curIndex)
+    {
+        return Mathf.Abs(rooms[preIndex].center.x - rooms[curIndex].center.x) +
+               Mathf.Abs(rooms[preIndex].center.y - rooms[curIndex].center.y);
     }
 
     private bool IsNewRoomValid(RoomData newRoom)
@@ -463,6 +805,7 @@ public class DungeonMap
             {
                 if (grid[i, j].cellType == GridCellType.CorridorOnFloor)
                 {
+                    //Debug.Log("Debug   " + i + "," + j);
                     if(CouldThisCellBeDoor(i, j, out DecorDir dir))
                     {
                         if (dir == DecorDir.None)
@@ -891,7 +1234,7 @@ public class DungeonMap
             //放置吊灯
             var center = room.center;
             Vector3 ceilLampPos = new Vector3(2 * (center.x + offset), ceilHeight, 2 * (center.y + offset));
-            ObjectPlacementSystem.PlaceObject(ceilLampPos, "antique_light");
+            ObjectPlacementSystem.PlaceObject(room, ceilLampPos, "CeilLight");
             
             //放置角落物体
             var leftBoundary = (room.basePosition.x + offset) * 2;
@@ -907,49 +1250,49 @@ public class DungeonMap
             Vector3 cornerPos3 = new Vector3(leftBoundary + 0.5f, 0, topBoundary - 0.5f);
             Vector3 cornerPos4 = new Vector3(rightBoundary + 0.5f, 0, topBoundary - 0.5f);
             if(greaterGrid[leftBoundary, bottomBoundary].cellType == GridCellType.RoomCorner)
-                ObjectPlacementSystem.PlaceObject(cornerPos1, "LightTall");
+                ObjectPlacementSystem.PlaceObject(room, cornerPos1, "LightTall");
             if(greaterGrid[rightBoundary, bottomBoundary].cellType == GridCellType.RoomCorner)
-                ObjectPlacementSystem.PlaceObject(cornerPos2, "LightTall");
+                ObjectPlacementSystem.PlaceObject(room, cornerPos2, "LightTall");
             if(greaterGrid[leftBoundary, topBoundary].cellType == GridCellType.RoomCorner)
-                ObjectPlacementSystem.PlaceObject(cornerPos3, "LightTall");
+                ObjectPlacementSystem.PlaceObject(room, cornerPos3, "LightTall");
             if(greaterGrid[rightBoundary, topBoundary].cellType == GridCellType.RoomCorner)
-                ObjectPlacementSystem.PlaceObject(cornerPos4, "LightTall");
+                ObjectPlacementSystem.PlaceObject(room, cornerPos4, "LightTall");
             
             //放置宝箱
-             float treasureChestRatio = Random.Range(0.0f, 1.0f);
-             if (treasureChestRatio > 0.7f) //每个房间以0.3的概率放置宝箱
-             {
-                 Vector2Int randomPosition;
-                 int retryCount = 0;
-                 while(retryCount < 10)
-                 {
-                     //放置宝箱
-                     randomPosition = new Vector2Int(Random.Range((int)room.basePosition.x, (int)room.maxPosition.x),
-                         Random.Range((int)room.basePosition.y, (int)room.maxPosition.y));
-                     //只允许放在边缘---------------------------放置系统的核心------------------------------------
-                     if (Mathf.Abs(randomPosition.x - room.center.x) < room.size.x / 2 ||
-                         Mathf.Abs(randomPosition.y - room.center.y) < room.size.y / 2)
-                     {
-                         retryCount++;
-                         Debug.Log("尝试放置宝箱 " + retryCount);
-                         if (retryCount == 10)
-                         {
-                             Debug.LogError("放置宝箱失败，没找到合适的位置");
-                         }
-                         continue;
-                     }
-             
-                     ObjectPlacementSystem.PlaceTreasureBox(randomPosition.x, randomPosition.y); //for Debug
-                     ObjectPlacementSystem.PlaceTreasureBox(2 * (randomPosition.x + offset), 2 * (randomPosition.y + offset),
-                         greaterGrid);
-                     break;
-                 }
-             }
+             // float treasureChestRatio = Random.Range(0.0f, 1.0f);
+             // if (treasureChestRatio > 0.7f) //每个房间以0.3的概率放置宝箱
+             // {
+             //     Vector2Int randomPosition;
+             //     int retryCount = 0;
+             //     while(retryCount < 10)
+             //     {
+             //         //放置宝箱
+             //         randomPosition = new Vector2Int(Random.Range((int)room.basePosition.x, (int)room.maxPosition.x),
+             //             Random.Range((int)room.basePosition.y, (int)room.maxPosition.y));
+             //         //只允许放在边缘---------------------------放置系统的核心------------------------------------
+             //         if (Mathf.Abs(randomPosition.x - room.center.x) < room.size.x / 2 ||
+             //             Mathf.Abs(randomPosition.y - room.center.y) < room.size.y / 2)
+             //         {
+             //             retryCount++;
+             //             Debug.Log("尝试放置宝箱 " + retryCount);
+             //             if (retryCount == 10)
+             //             {
+             //                 Debug.LogError("放置宝箱失败，没找到合适的位置");
+             //             }
+             //             continue;
+             //         }
+             //
+             //         //ObjectPlacementSystem.PlaceTreasureBox(randomPosition.x, randomPosition.y); //for Debug
+             //         ObjectPlacementSystem.PlaceTreasureBox(room, 2 * (randomPosition.x + offset), 2 * (randomPosition.y + offset),
+             //             greaterGrid);
+             //         break;
+             //     }
+             // }
             
              #region 放置中心区域的物体
              //放置中心区域的物体
              //地毯,沙发
-             string[] areaObjs = new[] { "Carpet_X", "SofaX", "Carpet3New", "RedTable", "SmallSofa" };
+             string[] areaObjs = new[] { "Carpet_X", "SofaX", "Carpet3New", "RedTable", "SmallSofa", "TeaTableNew" };
              foreach (var areaObj in areaObjs)
              {
                  float placeRatio = Random.Range(0.0f, 1.0f);
@@ -957,7 +1300,7 @@ public class DungeonMap
                  {
                      Vector2Int ranCenterdomPosition;
                      int retryCount = 0;
-                     while (retryCount < 10)
+                     while (retryCount < 100)
                      {
                          //放置地毯
                          ranCenterdomPosition = new Vector2Int(
@@ -982,9 +1325,8 @@ public class DungeonMap
                          }
             
                          Debug.Log("准备放在" + ranCenterdomPosition);
-                         ObjectPlacementSystem.PlaceCenterAreaObject(ranCenterdomPosition.x,
-                             ranCenterdomPosition.y, areaObj); //for Debug
-                         ObjectPlacementSystem.PlaceCenterAreaObject(2 * (ranCenterdomPosition.x + offset),
+                         //ObjectPlacementSystem.PlaceCenterAreaObject(ranCenterdomPosition.x, ranCenterdomPosition.y, areaObj); //for Debug
+                         ObjectPlacementSystem.PlaceCenterAreaObject(room, 2 * (ranCenterdomPosition.x + offset),
                              2 * (ranCenterdomPosition.y + offset), areaObj,
                              greaterGrid);
                          break;
@@ -996,7 +1338,7 @@ public class DungeonMap
             
             #region 放置靠墙物体
             
-            string[] wallObjs = new[] { "BookShelf2", "BookShelf3", "BookShelf4", "PhotoFrameDesk", "TVDesk" };
+            string[] wallObjs = new[] { "BookShelf2", "BookShelf3New", "BookShelf4New", "PhotoFrameDeskNew", "TVDeskNew", "TrashNew", "DeskVariantNew", "BoxNew" };
             foreach (var wallObj in wallObjs)
             {
                 float placeRatio = Random.Range(0, 1f);
@@ -1033,7 +1375,7 @@ public class DungeonMap
                             randomPos.x = Random.Range(2 * (room.basePosition.x + offset) + 1,
                                 2 * (room.maxPosition.x - 1 + offset));
                         }
-                        if (ObjectPlacementSystem.CouldWallObjectPlacedHere(randomPos.x, randomPos.y, wallIndex,
+                        if (ObjectPlacementSystem.CouldWallObjectPlacedHere(room, randomPos.x, randomPos.y, wallIndex,
                                 wallObj, greaterGrid))
                         {
                             //do nothing
@@ -1046,6 +1388,51 @@ public class DungeonMap
                 }
             }
             #endregion
+            
+            //钥匙放置相关逻辑
+            if (room.roomType == RoomType.Key || room.roomType == RoomType.Monster)
+            {
+                Debug.Log(room.roomID + "号房间的左下角坐标是" + room.basePosition);
+                //找到所有带有key的gameobject
+                List<GameObject> keys = new List<GameObject>();
+                Debug.Log("开始找房间" + room.roomID + "下的key");
+                foreach (var roomObj in room.roomObjects)
+                {
+                    Debug.Log(roomObj.name);
+                    //遍历roomObj的子节点
+                    foreach (var child in roomObj.GetComponentsInChildren<Transform>(true))
+                    {
+                        var childGo = child.gameObject;
+                        //判断Tag
+                        if (childGo.tag == "Key")
+                        {
+                            keys.Add(childGo);
+                            if (childGo.activeSelf)
+                            {
+                                Debug.LogError("存在Key开始就被激活！！！！");
+                                Debug.Log(roomObj.name);
+                            }
+                        }
+                    }
+                }
+
+                if (keys.Count > 0)
+                {
+                    Debug.Log("在房间"+ room.roomID + "中找到带有Key的gameObjects 个数" + keys.Count);
+                    int randomIndex = Random.Range(0, keys.Count);
+                    for (int i = 0; i < keys.Count; i++)
+                    {
+                        if (i == randomIndex)
+                        {
+                            keys[i].SetActive(true);
+                        }
+                    }
+                }
+                else
+                {
+                    Debug.LogError("在房间中没有找到带有Key的gameObjects");
+                }
+            }
         }
         
 
@@ -1146,42 +1533,43 @@ public class DungeonMap
         monsterInitPos = Vector2Int.zero;
         exitInitPos = Vector2Int.zero;
         //选择最大连通分量中最左下的房间
-        List<int> maxConnectedRooms = graph.FindMaxConnectedComponent();
-        foreach (var room in maxConnectedRooms)
-        {
-            Debug.Log("房间 " + room + " 的位置是 " + rooms[room].basePosition + " 到 " + rooms[room].maxPosition);
-        }
-        if (maxConnectedRooms.Count <= 1)
-        {
-            Debug.LogError("没有找到最大的连通分量");
-            return;
-        }
-        
-        int minBaseposSum = int.MaxValue;
-        int selectRoomIdx = -1;
+        // List<int> maxConnectedRooms = graph.FindMaxConnectedComponent();
+        // foreach (var room in maxConnectedRooms)
+        // {
+        //     Debug.Log("房间 " + room + " 的位置是 " + rooms[room].basePosition + " 到 " + rooms[room].maxPosition);
+        // }
+        // if (maxConnectedRooms.Count <= 1)
+        // {
+        //     Debug.LogError("没有找到最大的连通分量");
+        //     return;
+        // }
+        //
+        // int minBaseposSum = int.MaxValue;
+        // int selectRoomIdx = -1;
+        //
+        // for (int i = 0; i < maxConnectedRooms.Count; i++)
+        // {
+        //     var cur = maxConnectedRooms[i];
+        //     var curBaseposSum = rooms[i].basePosition.x + rooms[i].basePosition.y;
+        //     if (curBaseposSum < minBaseposSum)
+        //     {
+        //         minBaseposSum = curBaseposSum;
+        //         selectRoomIdx = cur;
+        //     }
+        // }
 
-        for (int i = 0; i < maxConnectedRooms.Count; i++)
-        {
-            var cur = maxConnectedRooms[i];
-            var curBaseposSum = rooms[i].basePosition.x + rooms[i].basePosition.y;
-            if (curBaseposSum < minBaseposSum)
-            {
-                minBaseposSum = curBaseposSum;
-                selectRoomIdx = cur;
-            }
-        }
+        characterInitPos.x = ((int)rooms[birthRoomsID].center.x + offset) * 2;
+        characterInitPos.y = ((int)rooms[birthRoomsID].center.y + offset) * 2;
 
-        characterInitPos.x = ((int)rooms[selectRoomIdx].center.x + offset) * 2;
-        characterInitPos.y = ((int)rooms[selectRoomIdx].center.y + offset) * 2;
-
-        var exitRoomIdx = graph.GetFarestNode(selectRoomIdx, out var maxDist);
+        //var exitRoomIdx = graph.GetFarestNode(selectRoomIdx, out var maxDist);
+        var exitRoomIdx = exitRoomsID;
         if (exitRoomIdx != -1)
         {
             exitInitPos.x = ((int)rooms[exitRoomIdx].center.x + offset) * 2;
             exitInitPos.y = ((int)rooms[exitRoomIdx].maxPosition.y - 1 + offset) * 2;
         }
 
-        var monsterRoomIdx = graph.GetNodeWithGivenDistFromGivenRoom(selectRoomIdx, monsterDistFromPlayer);
+        var monsterRoomIdx = graph.GetNodeWithGivenDistFromGivenRoom(birthRoomsID, monsterDistFromPlayer);
 
         if (monsterRoomIdx != null && monsterRoomIdx.Count > 0)
         {
@@ -1208,6 +1596,7 @@ public class DungeonMap
         
         Debug.Log(playerBirthPos);
         GameObject player = GameObject.Instantiate(playerPrefab, new Vector3(playerBirthPos.x, 0, playerBirthPos.y), Quaternion.identity);
+        player.AddComponent<Collector>();
 
         string monsterPrefabPath = "Assets/Configs/Player/Monster.prefab";
         #if UNITY_EDITOR

@@ -7,6 +7,7 @@ public static class MeshCombiner
     public static Mesh CombineMesh(Vector3[] position, Mesh baseMesh, Vector3 meshPosition, Vector3 meshScale, Quaternion meshRotation, bool isWall)
     {
         Mesh mesh = new Mesh();
+        mesh.name = "combined_" + baseMesh.name + meshRotation.y;
         List<Vector3> vertices = new List<Vector3>();
         List<int> indices = new List<int>();
         List<Vector2> uvs = new List<Vector2>();

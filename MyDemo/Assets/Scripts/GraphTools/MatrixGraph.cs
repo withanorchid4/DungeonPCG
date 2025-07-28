@@ -2,11 +2,25 @@
 
 using UnityEngine;
 
+public struct Edge
+{
+    public int from;
+    public int to;
+    public int weight;
+    public Edge(int f, int t, int w)
+    {
+        from = f;
+        to = t;
+        weight = w;
+    }
+}
+
+
 public class MatrixGraph
 {
     public int[,] matrix;
 
-    private int[,] distanceMatrix; // 新增：存储所有节点对的最短距离
+    public int[,] distanceMatrix; // 新增：存储所有节点对的最短距离
 
     private int[,] nodeDistMatrix;
     
@@ -23,6 +37,7 @@ public class MatrixGraph
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
                 // 对角线为0，其他初始化为无穷大
+                matrix[i, j] = (i == j) ? 0 : int.MaxValue;
                 distanceMatrix[i, j] = (i == j) ? 0 : int.MaxValue;
                 nodeDistMatrix[i, j] = (i == j) ? 0 : int.MaxValue;
             }
@@ -36,6 +51,52 @@ public class MatrixGraph
         matrix[col, row] = value;
     }
 
+    //生成最小生成树MST
+    public List<Edge> BuildMST(int start)
+    {
+        int n = matrix.GetLength(0);
+        bool[] visited = new bool[n];
+        int[] minEdge = new int[n]; // 到MST的最小权重
+        int[] parent = new int[n];  // 记录最小权重边的父节点
+        List<Edge> mstEdges = new List<Edge>();
+
+        for (int i = 0; i < n; i++)
+        {
+            minEdge[i] = int.MaxValue;
+            parent[i] = -1;
+        }
+        minEdge[start] = 0; // 从0号节点开始，图必然连通
+
+        for (int i = 0; i < n; i++)
+        {
+            int u = -1;
+            for (int v = 0; v < n; v++)
+            {
+                if (!visited[v] && (u == -1 || minEdge[v] < minEdge[u]))
+                    u = v;
+            }
+            if (minEdge[u] == int.MaxValue)
+                break; // 剩下的点不连通
+
+            visited[u] = true;
+
+            if (parent[u] != -1)
+            {
+                mstEdges.Add(new Edge(parent[u], u, matrix[parent[u], u]));
+            }
+
+            for (int v = 0; v < n; v++)
+            {
+                if (matrix[u, v] != 0 && !visited[v] && matrix[u, v] < minEdge[v])
+                {
+                    minEdge[v] = matrix[u, v];
+                    parent[v] = u;
+                }
+            }
+        }
+
+        return mstEdges;
+    }
     public void BuildDistances() //添加完走廊之后就可以生成最短距离矩阵
     {
         int n = matrix.GetLength(0);
@@ -46,7 +107,7 @@ public class MatrixGraph
                 if (matrix[i, j] != 0)
                 {
                     distanceMatrix[i, j] = matrix[i, j];
-                    nodeDistMatrix[i, j] = 1;
+                    nodeDistMatrix[i, j] = matrix[i, j] == int.MaxValue ? int.MaxValue : 1;
                 }
             }
         }
@@ -90,6 +151,44 @@ public class MatrixGraph
         }
 
         return maxIndex;
+    }
+
+    public List<int> FindWayFromStartToEnd(int start, int end)  //BFS实现
+    {
+        List<int> path = new List<int>();
+        if (start < 0 || start >= distanceMatrix.GetLength(0) || end < 0 || end >= distanceMatrix.GetLength(0))
+        {
+            Debug.Log("[FindWayFromStartToEnd] 参数错误");
+            return path;
+        }
+        
+        List<int>[] pathList = new List<int>[distanceMatrix.GetLength(0)];
+        bool[] visited = new bool[distanceMatrix.GetLength(0)];
+
+        for (int i = 0; i < distanceMatrix.GetLength(0); i++)
+        {
+            pathList[i] = new List<int>();
+            visited[i] = false;
+        }
+        pathList[start].Add(start);
+        Queue<int> queue = new Queue<int>();
+        queue.Enqueue(start);
+        while (queue.Count > 0)
+        {
+            int current = queue.Dequeue();
+            visited[current] = true;
+            for (int i = 0; i < matrix.GetLength(0); i++)
+            {
+                if (matrix[current, i] != int.MaxValue && !visited[i])
+                {
+                    pathList[i].AddRange(pathList[current]);
+                    pathList[i].Add(i);
+                    queue.Enqueue(i);
+                }
+            }
+        }
+
+        return pathList[end];
     }
 
     public List<int> GetNodeWithGivenDistFromGivenRoom(int index, int dist)
@@ -159,6 +258,38 @@ public class MatrixGraph
             }
         }
 
+        return connectedComponents;
+    }
+    
+    //返回连通分量
+    public List<List<int>> GetConnectedComponents()
+    {
+        List<List<int>> connectedComponents = new List<List<int>>();
+        
+        bool []visited = new bool[distanceMatrix.GetLength(0)];
+        for (int i = 0; i < distanceMatrix.GetLength(0); i++)
+        {
+            visited[i] = false;
+        }
+        
+        for (int i = 0; i < distanceMatrix.GetLength(0); i++)
+        {
+            if (!visited[i])
+            {
+                visited[i] = true;
+                List<int> component = new List<int>();
+                component.Add(i);
+                for (int j = 0; j < distanceMatrix.GetLength(0); j++)
+                {
+                    if (j != i && distanceMatrix[i, j] != int.MaxValue && !visited[j])
+                    {
+                        component.Add(j);
+                        visited[j] = true;
+                    }
+                }
+                connectedComponents.Add(component);
+            }
+        }
         return connectedComponents;
     }
 }
