@@ -25,7 +25,7 @@ public class WFCEditorWindow : EditorWindow
             UnityEngine.Random.InitState(seed);
             if (gridDrawer != null)
             {
-                wfc = new WFCMain(2, 2);
+                wfc = new WFCMain(8, 8);
                 gridDrawer.wfc = wfc;
                 wfc.InitializeRandomly();
             }

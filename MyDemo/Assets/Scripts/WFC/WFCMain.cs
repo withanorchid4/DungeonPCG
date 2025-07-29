@@ -1,5 +1,5 @@
 ﻿using System.Collections.Generic;
-using System.Data;
+using System.Linq;
 using UnityEngine;
 
 public class WFCMain
@@ -11,6 +11,7 @@ public class WFCMain
     private int hasCollapsedCount;
     
     // 新增：历史记录栈（保存状态和可回溯的决策点）
+    Vector2Int lastCollapsePos;
     private Stack<(Slot[,] slots, int hasCollapsedCount, Vector2Int lastCollapsePos, List<SlotType> triedModules)> historyStack = new Stack<(Slot[,], int, Vector2Int, List<SlotType>)>();
     
     // 新增：当前决策点的剩余可选模块缓存
@@ -66,7 +67,27 @@ public class WFCMain
     {
         while (hasCollapsedCount < height * width)
         {
-            Iterate();
+            var backup = BackupSlots();
+            historyStack.Push((backup, hasCollapsedCount, lastCollapsePos, remainingChoices.Values.SelectMany(x => x).ToList()));
+            
+            var minCoords = GetMinEntropyCorrds();
+            lastCollapsePos = minCoords;
+            
+            //尝试坍缩
+            bool collapseSuccess = CollapseAt(minCoords);
+            if (!collapseSuccess)
+            {
+                HandleBacktrack();
+                continue;
+            }
+
+            bool propagateSuccess = Propagate(minCoords);
+            if (!propagateSuccess)
+            {
+                HandleBacktrack();
+            }
+            
+            //Iterate();
         }
     }
     
@@ -77,10 +98,32 @@ public class WFCMain
         Propagate(minEntropyCorrds);
     }
 
-    private void CollapseAt(Vector2Int corrds)
+    private bool CollapseAt(Vector2Int corrds, bool isBackTracking = false)
     {
-        if (slots[corrds.x, corrds.y].modules.Count >= 1)
+        var slot = slots[corrds.x, corrds.y];
+        if (slot.modules.Count == 0)
         {
+            Debug.LogError("矛盾发生，需要回溯");
+            return false;
+        }
+
+        if (isBackTracking && remainingChoices.ContainsKey(corrds))
+        {
+            var remaining = remainingChoices[corrds];
+            if (remaining.Count > 0)
+            {
+                slot.module = remaining[0];
+                remaining.RemoveAt(0);
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            remainingChoices[corrds] = new List<SlotType>(slot.modules);
+            
             //找一个随机的模块——>按照一定的权重来选择，优先添加blank
             var weightedList = new List<SlotType>();
             foreach (var m in slots[corrds.x, corrds.y].modules)
@@ -91,20 +134,23 @@ public class WFCMain
                 }
             }
             var module = weightedList[Random.Range(0, weightedList.Count)];
-            slots[corrds.x, corrds.y].module = module;
-            slots[corrds.x, corrds.y].collapsed = true;
-            slots[corrds.x, corrds.y].modules.Clear();
-            slots[corrds.x, corrds.y].modules.Add(module);
-            hasCollapsedCount++;
+            slot.module = module;
+            // slots[corrds.x, corrds.y].module = module;
+            // slots[corrds.x, corrds.y].collapsed = true;
+            // slots[corrds.x, corrds.y].modules.Clear();
+            // slots[corrds.x, corrds.y].modules.Add(module);
+            // hasCollapsedCount++;
         }
-        else
-        {
-            Debug.LogError("Slot is empty");
-            throw new EvaluateException();
-        }
+        
+        slot.collapsed = true;
+        slot.modules.Clear();
+        slot.modules.Add(slot.module);
+        hasCollapsedCount++;
+
+        return true;
     }
 
-    private void Propagate(Vector2Int corrds)
+    private bool Propagate(Vector2Int corrds)
     {
         Stack<Vector2Int> stack = new Stack<Vector2Int>();
         stack.Push(corrds);
@@ -117,16 +163,16 @@ public class WFCMain
             foreach (var dirCorrd in validDirs)
             {
                 var dir = dirCorrd.Item1;
-                var cod = dirCorrd.Item2;
+                var neighborCorrd = dirCorrd.Item2;
                 
-                var neighborModules = slots[cod.x, cod.y].modules;
+                var neighborModules = slots[neighborCorrd.x, neighborCorrd.y].modules;
 
-                var shouldNeighborModules = new List<SlotType>();
+                var shouldNeighborModules = new HashSet<SlotType>();
 
                 foreach (var module in curModules)
                 {
                     var neightborMod = NeighborConstrainRule.GetNeightborSlots(module, dir);
-                    shouldNeighborModules.AddRange(neightborMod);
+                    shouldNeighborModules.UnionWith(neightborMod);
                 }
                 
 
@@ -139,15 +185,23 @@ public class WFCMain
                         toRemove.Add(module);
                     }
                 }
+
+                if (toRemove.Count == neighborModules.Count)
+                {
+                    Debug.Log($"矛盾发生在 {neighborCorrd}");
+                    return false;
+                }
                 // 再统一移除
                 foreach (var module in toRemove)
                 {
                     neighborModules.Remove(module);
-                    if(!stack.Contains(cod))
-                        stack.Push(cod);
+                    if(!stack.Contains(neighborCorrd))
+                        stack.Push(neighborCorrd);
                 }
             }
         }
+
+        return true;
     }
 
     private List<(int, Vector2Int)> GetValidDirs(Vector2Int corrds)
@@ -199,6 +253,38 @@ public class WFCMain
         }
 
         return minEntropyCorrds;
+    }
+    
+    private void HandleBacktrack()
+    {
+        if (historyStack.Count == 0)
+        {
+            Debug.LogError("无法回溯，无解");
+            throw new System.Exception("No solution");
+        }
+
+        Debug.LogError("触发回溯！！");
+        // 恢复上一个状态
+        var (backupSlots, backupCount, lastPos, remaining) = historyStack.Pop();
+        slots = backupSlots;
+        hasCollapsedCount = backupCount;
+        remainingChoices[lastPos] = remaining;
+
+        // 重新尝试坍缩（强制进入回溯模式）
+        bool retrySuccess = CollapseAt(lastPos, true);
+        if (!retrySuccess)
+        {
+            HandleBacktrack(); // 递归回溯
+        }
+        else
+        {
+            // 重新传播
+            bool propagateSuccess = Propagate(lastPos);
+            if (!propagateSuccess)
+            {
+                HandleBacktrack();
+            }
+        }
     }
     
     
